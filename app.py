@@ -9,7 +9,7 @@ initial_debt = st.sidebar.number_input("Initial Debt", value=125000) # £
 mortgage_term = st.sidebar.number_input("Mortgage Term", value=25) # years
 interest_rate = st.sidebar.number_input("Interest Rate", value=5.07) #%
 overpayment = st.sidebar.number_input("Monthly Overpayment",value=600) #per month
-overpayment_perc = st.sidebar.number_input("Yearly Overpayment %",value=0.00) #per month
+overpayment_perc = st.sidebar.number_input("Yearly Overpayment %",value=0) / 100. #per month
 
 # also good for comparison: https://moneyfactscompare.co.uk/
 # formula gives same results as https://www.moneysavingexpert.com/mortgages/mortgage-overpayment-calculator/
@@ -40,38 +40,54 @@ def one_payment(debt, repayment, overpayment=0):
 
 def simulate(years, overpayment=0, ovp_perc=0.0):
     output = [P]
+    yearly_overpayments = [np.nan]
+    payments = [0]
     previous_debt = P
     c = get_monthly_repayment()
     for month in np.arange(1, (len(years)-1) * 12 + 1):
         if month % 12 == 0:
             print(month)
             monthly_output = one_payment(previous_debt, c, overpayment + previous_debt * ovp_perc)
+            yearly_overpayments.append(previous_debt * ovp_perc)
+            payments.append(c + overpayment + previous_debt * ovp_perc if monthly_output > 0 else 0)
             output.append(monthly_output)
         else:
             monthly_output = one_payment(previous_debt, c, overpayment)
+            payments.append(c + overpayment if monthly_output > 0 else 0)
         previous_debt = monthly_output
     output = np.array(output)
     output[output < 0] = 0
-    return output
+    yearly_overpayments = np.array(yearly_overpayments)
+    yearly_overpayments[yearly_overpayments < 0] = 0
+    payments = np.array(payments)
+    return output, yearly_overpayments, payments
+
+output1, yearly_overpayments1, payments1 = simulate(years)
+debt1 = pd.DataFrame({"years": years, "value": output1})
+debt1["caption"] = "no overpayment"
+output2, yearly_overpayments2, payments2 = simulate(years, overpayment, overpayment_perc)
+debt2 = pd.DataFrame({"years": years, "value": output2})
+debt2["caption"] = f"with overpayment"
+
+if overpayment > 0:
+    info = pd.DataFrame({"years": years, "value": overpayment*12* (100/10.)})
+    info["caption"] = f"10% overpayment limit"
+    df = pd.concat([debt1, debt2, info])
+elif overpayment_perc > 0:
+    info = pd.DataFrame({"years": years, "value": yearly_overpayments2})
+    info["caption"] = f"yearly overpayments"
+    df = pd.concat([debt1, debt2, info])
+else:
+    df = pd.concat([debt1, debt2])
+
 
 c1, c2, c3 = st.columns([2,1,1])
-c1.write(f"Monthly Payment: :blue[£{round(get_monthly_repayment(),2)}]")
+c1.write(f"Monthly Payment: :blue[£ {round(get_monthly_repayment(),2)}] + overpayment")
+c1.write(f"Total Paid (no overpayment): :blue[£ {np.sum(payments1):,.0f}]")
+c1.write(f"Total Paid (with overpayment): :blue[£ {np.sum(payments2):,.0f}]")
+c1.write(f"Total Saved: :blue[£ {np.sum(payments1) - np.sum(payments2):,.0f}]")
 
-c2.write("No Overpayment:")
-debt1 = pd.DataFrame({"years": years, "debt": simulate(years)})
-c2.table(debt1)
-debt1["scenario"] = "no overpayment"
-
-c3.write(f"Overpayment of £{overpayment}")
-debt2 = pd.DataFrame({"years": years, "debt": simulate(years, overpayment, overpayment_perc)})
-c3.table(debt2, height="stretch")
-debt2["scenario"] = f"£{overpayment} per month"
-
-
-df = pd.concat([debt1, debt2])
-
-c1.write("Remaining Debt per year:")
-fig = px.line(df, x="years", y="debt", color='scenario', markers=True)
+fig = px.line(df, x="years", y="value", color='caption', markers=True)
 fig.update_layout(legend=dict(
     yanchor="top",
     y=0.99,
@@ -79,3 +95,10 @@ fig.update_layout(legend=dict(
     x=0.99
 ))
 c1.plotly_chart(fig,width=800, height=500)
+
+c2.write("No Overpayment:")
+c2.dataframe(debt1, height=600, column_config = {"value": st.column_config.NumberColumn("Debt(£)", format="£ %,.0f")})
+
+c3.write(f"Overpayment of £{overpayment}")
+c3.dataframe(debt2, height=600, column_config = {"value": st.column_config.NumberColumn("Debt(£)", format="£ %,.0f")})
+
