@@ -5,18 +5,19 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 st.sidebar.title("💰 Mortgage Simulator")
-initial_debt = st.sidebar.number_input("Initial Debt", value=125000) # £
+house_price = st.sidebar.number_input("House to Buy", value=400000) # £
+deposit = st.sidebar.number_input("Deposit", value=125000) # £
 mortgage_term = st.sidebar.number_input("Mortgage Term", value=25) # years
 interest_rate = st.sidebar.number_input("Interest Rate", value=5.07) #%
-overpayment = st.sidebar.number_input("Monthly Overpayment",value=200) #per month
-overpayment_perc = st.sidebar.number_input("Yearly Overpayment %",value=0) / 100. #per month
+overpayment = st.sidebar.number_input("Monthly Overpayment",value=0) #per month
+overpayment_perc = st.sidebar.number_input("Yearly Overpayment %",value=10) / 100. #per month
 
 # also good for comparison: https://moneyfactscompare.co.uk/
 # formula gives same results as https://www.moneysavingexpert.com/mortgages/mortgage-overpayment-calculator/
 # and can be found on wikipedia: https://en.wikipedia.org/wiki/Mortgage_calculator
 # could be more precise if we account for the variable rate after the fixed contract
 r = interest_rate/100.0/12.0 # r = 0.004225 if rate is 5.07%
-P = initial_debt
+P = house_price - deposit
 N = mortgage_term*12.0 # total number of month of the fix rate
 years = np.arange(mortgage_term+1)
 
@@ -84,12 +85,16 @@ else:
 overpayments_per_year = np.bincount(np.repeat(years[1:], 12), weights=payments2 - get_monthly_repayment()) 
 overpayments_per_year[overpayments_per_year<0] = 0
 summary_table = pd.DataFrame({
-    "years": years, "Debt (no overpayment)": output1, "Debt (with overpayment)": output2, "Overpayments": overpayments_per_year 
+    "years": years, 
+    "Debt (no overp.)": output1, 
+    "Debt (with overp.)": output2, 
+    "Overpayments": overpayments_per_year,
+    "Monthly": overpayments_per_year/12.
 })
 
 
 c1, c2 = st.columns([2,2])
-c1.write(f"Monthly Payment: :blue[£ {round(get_monthly_repayment(),2)}] + overpayment")
+c1.write(f"Monthly Payment: :blue[£ {round(get_monthly_repayment())}] (+ :blue[£ {round(overpayments_per_year[1]/12.0)}] first year)")
 totals = pd.DataFrame({
     "Total Paid (No overpayment)" : [f":blue[£ {np.sum(payments1):,.0f}]"],
     "Total Paid (With overpayment)" : [f":blue[£ {np.sum(payments2):,.0f}]"],
@@ -104,10 +109,11 @@ fig.update_layout(
 c1.plotly_chart(fig,width=800, height=500, config = {'displayModeBar': False})
 
 c2.write("In more details:")
-c2.dataframe(summary_table, height=600, width="content", column_config = {
-    "Debt (no overpayment)": st.column_config.NumberColumn(format="£ %,.0f"),
-    "Debt (with overpayment)": st.column_config.NumberColumn(format="£ %,.0f"),
-    "Overpayments": st.column_config.NumberColumn(format="£ %,.0f")
+c2.dataframe(summary_table, height=600, width="content", hide_index=True, column_config = {
+    "Debt (no overp.)": st.column_config.NumberColumn(format="£ %,.0f"),
+    "Debt (with overp.)": st.column_config.NumberColumn(format="£ %,.0f"),
+    "Overpayments": st.column_config.NumberColumn(format="£ %,.0f"),
+    "Monthly": st.column_config.NumberColumn(format="£ %,.0f"),
     })
 
 
